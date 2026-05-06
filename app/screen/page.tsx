@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 import { useAppKitProvider } from "@reown/appkit-controllers/react";
-import { useSignMessage, useChainId } from "wagmi";
+import { useSignMessage, useChainId, useConnect } from "wagmi";
 import bs58 from "bs58";
 
 type Stage =
@@ -46,10 +46,12 @@ export default function ScreenPage() {
     useAppKitProvider<SolanaProvider>("solana");
   const { signMessageAsync } = useSignMessage();
   const evmChainId = useChainId();
+  const { error: evmConnectError, status: evmConnectStatus } = useConnect();
 
   const [stage, setStage] = useState<Stage>("consent");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const verificationStartedRef = useRef(false);
+  const seenConnectErrorRef = useRef<Error | null>(null);
 
   const connectedChain: "evm" | "solana" | null = useMemo(() => {
     if (evmAccount?.isConnected && evmAccount.address) return "evm";
@@ -189,6 +191,30 @@ export default function ScreenPage() {
     }
   }, [stage, connectedChain, runVerification]);
 
+  // Surface wagmi connector errors (e.g. MetaMask "Connection declined")
+  // up to the page so the participant sees a useful message instead of a
+  // silent spinner. Only react to a fresh error reference.
+  useEffect(() => {
+    if (evmConnectStatus !== "error" || !evmConnectError) return;
+    if (evmConnectError === seenConnectErrorRef.current) return;
+    seenConnectErrorRef.current = evmConnectError;
+    if (stage !== "awaiting-connection") return;
+
+    const baseMsg = `Wallet connection failed: ${evmConnectError.message}`;
+    const looksLikePending =
+      /previous request|already pending|already processing/i.test(
+        evmConnectError.message ?? "",
+      );
+    const friendly = looksLikePending
+      ? `${baseMsg} If this keeps happening, open the MetaMask extension icon in your browser toolbar, dismiss any pending request you see there, and try again.`
+      : baseMsg;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setErrorMessage(friendly);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStage("error");
+    verificationStartedRef.current = false;
+  }, [stage, evmConnectStatus, evmConnectError]);
+
   if (!prolificId) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-16">
@@ -236,6 +262,32 @@ export default function ScreenPage() {
               );
             }, 1500);
           }}
+          onNoWallet={async () => {
+            setStage("screened-out-redirecting");
+            try {
+              const res = await fetch("/api/no-wallet", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prolific_id: prolificId }),
+              });
+              if (!res.ok) {
+                throw new Error(
+                  "Could not record your response. Please try again.",
+                );
+              }
+              const data = (await res.json()) as { redirect_url: string };
+              setTimeout(() => {
+                window.location.replace(data.redirect_url);
+              }, 1200);
+            } catch (e) {
+              const msg =
+                e instanceof Error
+                  ? e.message
+                  : "An unexpected error occurred.";
+              setErrorMessage(msg);
+              setStage("error");
+            }
+          }}
         />
       )}
 
@@ -254,7 +306,9 @@ export default function ScreenPage() {
         >
           A wallet selection dialog should be open. Choose the wallet you
           would like to use, then approve the connection. If you closed the
-          dialog by accident, click Cancel below.
+          dialog by accident, click Cancel below. If MetaMask shows
+          &ldquo;Connection declined&rdquo;, open the extension icon and
+          clear any pending request first.
         </StatusPane>
       )}
 
@@ -502,7 +556,13 @@ function ConsentPane({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-function ExplanationPane({ onConnect }: { onConnect: () => void }) {
+function ExplanationPane({
+  onConnect,
+  onNoWallet,
+}: {
+  onConnect: () => void;
+  onNoWallet: () => void;
+}) {
   return (
     <section>
       <h2 className="text-xl font-semibold">
@@ -557,6 +617,36 @@ function ExplanationPane({ onConnect }: { onConnect: () => void }) {
           Connect Wallet
         </button>
       </div>
+      <p className="mt-4 text-xs text-neutral-500">
+        Don&rsquo;t have a cryptocurrency wallet? You can install one (such
+        as{" "}
+        <a
+          className="underline"
+          href="https://phantom.app/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Phantom
+        </a>{" "}
+        or{" "}
+        <a
+          className="underline"
+          href="https://metamask.io/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          MetaMask
+        </a>
+        ) and return to this page, or{" "}
+        <button
+          type="button"
+          onClick={onNoWallet}
+          className="underline hover:text-neutral-700"
+        >
+          continue without a wallet (you will not be eligible for this study)
+        </button>
+        .
+      </p>
     </section>
   );
 }

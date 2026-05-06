@@ -114,7 +114,13 @@ export async function POST(req: NextRequest) {
   const completionUrl = process.env.PROLIFIC_COMPLETION_URL;
   const screenedOutUrl = process.env.PROLIFIC_SCREENED_OUT_URL;
   if (!completionUrl || !screenedOutUrl) {
-    console.error("[verify] Missing PROLIFIC_*_URL env vars", { prolific_id });
+    const missing = [
+      !completionUrl && "PROLIFIC_COMPLETION_URL",
+      !screenedOutUrl && "PROLIFIC_SCREENED_OUT_URL",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    console.error("[verify] Missing env var(s)", { prolific_id, missing });
     return NextResponse.json(
       { error: "Server misconfiguration. Please contact the researchers." },
       { status: 500 },
