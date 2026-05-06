@@ -262,6 +262,32 @@ export default function ScreenPage() {
               );
             }, 1500);
           }}
+          onNoWallet={async () => {
+            setStage("screened-out-redirecting");
+            try {
+              const res = await fetch("/api/no-wallet", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prolific_id: prolificId }),
+              });
+              if (!res.ok) {
+                throw new Error(
+                  "Could not record your response. Please try again.",
+                );
+              }
+              const data = (await res.json()) as { redirect_url: string };
+              setTimeout(() => {
+                window.location.replace(data.redirect_url);
+              }, 1200);
+            } catch (e) {
+              const msg =
+                e instanceof Error
+                  ? e.message
+                  : "An unexpected error occurred.";
+              setErrorMessage(msg);
+              setStage("error");
+            }
+          }}
         />
       )}
 
@@ -530,7 +556,13 @@ function ConsentPane({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-function ExplanationPane({ onConnect }: { onConnect: () => void }) {
+function ExplanationPane({
+  onConnect,
+  onNoWallet,
+}: {
+  onConnect: () => void;
+  onNoWallet: () => void;
+}) {
   return (
     <section>
       <h2 className="text-xl font-semibold">
@@ -585,6 +617,36 @@ function ExplanationPane({ onConnect }: { onConnect: () => void }) {
           Connect Wallet
         </button>
       </div>
+      <p className="mt-4 text-xs text-neutral-500">
+        Don&rsquo;t have a cryptocurrency wallet? You can install one (such
+        as{" "}
+        <a
+          className="underline"
+          href="https://phantom.app/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Phantom
+        </a>{" "}
+        or{" "}
+        <a
+          className="underline"
+          href="https://metamask.io/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          MetaMask
+        </a>
+        ) and return to this page, or{" "}
+        <button
+          type="button"
+          onClick={onNoWallet}
+          className="underline hover:text-neutral-700"
+        >
+          continue without a wallet (you will not be eligible for this study)
+        </button>
+        .
+      </p>
     </section>
   );
 }
