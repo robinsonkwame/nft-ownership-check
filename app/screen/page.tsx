@@ -224,20 +224,37 @@ export default function ScreenPage() {
         <ExplanationPane
           onConnect={async () => {
             setStage("awaiting-connection");
-            try {
-              await open();
-            } catch {
-              // Modal close from user; revert
-              setStage("explanation");
-            }
+            await open();
+            // open() resolves whenever the modal closes — whether the
+            // user picked a wallet or dismissed it. If a wallet was
+            // actually selected, the useEffect below will move us into
+            // the verification flow within a render or two; if not, fall
+            // back to the explanation pane so the user can try again.
+            window.setTimeout(() => {
+              setStage((current) =>
+                current === "awaiting-connection" ? "explanation" : current,
+              );
+            }, 1500);
           }}
         />
       )}
 
       {stage === "awaiting-connection" && (
-        <StatusPane title="Connecting to your wallet">
+        <StatusPane
+          title="Connecting to your wallet"
+          actions={
+            <button
+              type="button"
+              onClick={() => setStage("explanation")}
+              className="text-sm font-medium text-neutral-700 underline underline-offset-4 hover:text-neutral-900"
+            >
+              Cancel and choose a different wallet
+            </button>
+          }
+        >
           A wallet selection dialog should be open. Choose the wallet you
-          would like to use, then approve the connection.
+          would like to use, then approve the connection. If you closed the
+          dialog by accident, click Cancel below.
         </StatusPane>
       )}
 
@@ -547,9 +564,11 @@ function ExplanationPane({ onConnect }: { onConnect: () => void }) {
 function StatusPane({
   title,
   children,
+  actions,
 }: {
   title: string;
   children: React.ReactNode;
+  actions?: React.ReactNode;
 }) {
   return (
     <section className="rounded-md border border-neutral-200 p-6">
@@ -558,6 +577,7 @@ function StatusPane({
         <h2 className="text-lg font-semibold">{title}</h2>
       </div>
       <p className="mt-3 text-sm leading-6 text-neutral-700">{children}</p>
+      {actions && <div className="mt-4">{actions}</div>}
     </section>
   );
 }
