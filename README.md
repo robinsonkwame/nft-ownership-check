@@ -21,6 +21,7 @@ A Next.js application that verifies wallet-based NFT ownership for participants 
 - `POST /api/verify` — verifies signature, queries NFT holdings, persists record, returns redirect URL.
 - `POST /api/no-wallet` — clean exit for participants who do not have a cryptocurrency wallet. Persists a record with `no_wallet: true, eligible: false` and returns the screened-out URL.
 - `GET /api/admin` — Basic-auth-protected JSON dump of all eligibility records (sorted by timestamp descending). Supports `?format=csv` for a CSV download.
+- `GET /api/health` — Basic-auth-protected diagnostic. Reports which env vars the running function can see (just `true`/`false` per var, no values), whether Upstash Redis is reachable, the Vercel commit SHA, and the deployment environment. Useful after editing env vars in the Vercel dashboard to confirm the redeploy actually picked them up.
 
 ## Environment variables
 
