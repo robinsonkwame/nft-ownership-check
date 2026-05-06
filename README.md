@@ -32,6 +32,7 @@ A Next.js application that verifies wallet-based NFT ownership for participants 
 | `ADMIN_PASSWORD` | Vercel (manual) and `.env.local` | Password for Basic auth on `/api/admin`. Use a long random value. |
 | `KV_REST_API_URL` | Vercel (auto via Upstash Marketplace integration) | Upstash Redis REST endpoint. |
 | `KV_REST_API_TOKEN` | Vercel (auto via Upstash Marketplace integration) | Upstash Redis REST token (read+write). |
+| `TEST_BYPASS_PROLIFIC_ID` | Vercel (manual, optional) and `.env.local` | Test-mode bypass. See "Test bypass" below. Leave **unset** in production. |
 
 `@upstash/redis`'s `Redis.fromEnv()` automatically picks up `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
 
@@ -61,6 +62,24 @@ Open <http://localhost:3000/screen?PROLIFIC_PID=test001> to exercise the partici
    https://<your-vercel-domain>/screen?PROLIFIC_PID={{%PROLIFIC_PID%}}
    ```
 6. **Smoke-test** by following the URL in a browser with a wallet you know is empty of NFTs; you should be redirected to the screened-out URL, and a record should appear at `https://<your-vercel-domain>/api/admin` (Basic auth).
+
+## Test bypass
+
+Validating the eligible path normally requires a wallet that holds at least one NFT on Ethereum, Polygon, Base, or Solana. To exercise the full server-side flow without buying an NFT, set the optional env var `TEST_BYPASS_PROLIFIC_ID` to a long, hard-to-guess string of your choice (treat it like a shared secret). When a participant arrives with `?PROLIFIC_PID=<that exact string>`:
+
+- Connect-wallet, message-signing, signature verification, nonce consumption, and Redis record-write all run normally.
+- The Alchemy NFT lookup is **skipped** and counts are synthesised as `{ ethereum: 1 }`, so `eligible` is always `true` and the participant is redirected to `PROLIFIC_COMPLETION_URL`.
+- The eligibility record stored at `prolific:<id>` is tagged `"test_bypass": true` so you can filter these rows out of real research data.
+- A `console.warn` line is emitted server-side every time the bypass triggers, for the audit log.
+
+**Workflow**
+
+1. In Vercel → Project Settings → Environment Variables, set `TEST_BYPASS_PROLIFIC_ID` to e.g. `WSU-NFT-BYPASS-jNV4yN6m1iNs` (any long random string), Production scope. Redeploy.
+2. Visit `https://nft-ownership-check.vercel.app/screen?PROLIFIC_PID=WSU-NFT-BYPASS-jNV4yN6m1iNs` with any wallet, complete the flow, confirm you land on the completion URL and that a record with `"test_bypass": true` appears in `/api/admin`.
+3. Run a 3-person Prolific test against participants who have actual NFTs to validate the full real path.
+4. **Remove `TEST_BYPASS_PROLIFIC_ID`** from Vercel before opening the study to the full participant pool, and redeploy. With the var unset, the bypass is fully disabled.
+
+The bypass is keyed on string equality with `prolific_id` from the request body. If the env var is absent or empty, no value can trigger it. Do not commit the bypass string into source.
 
 ## Admin endpoint
 

@@ -71,31 +71,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Signature verification failed" }, { status: 400 });
   }
 
+  const bypassId = process.env.TEST_BYPASS_PROLIFIC_ID;
+  const isBypass = Boolean(bypassId) && prolific_id === bypassId;
+
   let counts: CountsByChain = {};
   let total = 0;
 
-  try {
-    if (chain === "evm") {
-      const [eth, poly, base] = await Promise.all(
-        EVM_NETWORKS.map((n) =>
-          getEvmAlchemy(n)
-            .nft.getNftsForOwner(address, { omitMetadata: true, pageSize: 1 })
-            .then((r) => r.totalCount ?? 0),
-        ),
+  if (isBypass) {
+    console.warn("[verify] TEST BYPASS MODE: skipping Alchemy lookup", {
+      prolific_id,
+      address,
+    });
+    counts = { ethereum: 1 };
+    total = 1;
+  } else {
+    try {
+      if (chain === "evm") {
+        const [eth, poly, base] = await Promise.all(
+          EVM_NETWORKS.map((n) =>
+            getEvmAlchemy(n)
+              .nft.getNftsForOwner(address, { omitMetadata: true, pageSize: 1 })
+              .then((r) => r.totalCount ?? 0),
+          ),
+        );
+        counts = { ethereum: eth, polygon: poly, base: base };
+        total = eth + poly + base;
+      } else {
+        const sol = await countSolanaNfts(address);
+        counts = { solana: sol };
+        total = sol;
+      }
+    } catch (e) {
+      console.error("[verify] Alchemy lookup failed", { prolific_id, error: e });
+      return NextResponse.json(
+        { error: "NFT data lookup failed. Please try again later." },
+        { status: 502 },
       );
-      counts = { ethereum: eth, polygon: poly, base: base };
-      total = eth + poly + base;
-    } else {
-      const sol = await countSolanaNfts(address);
-      counts = { solana: sol };
-      total = sol;
     }
-  } catch (e) {
-    console.error("[verify] Alchemy lookup failed", { prolific_id, error: e });
-    return NextResponse.json(
-      { error: "NFT data lookup failed. Please try again later." },
-      { status: 502 },
-    );
   }
 
   const eligible = total > 0;
@@ -117,6 +129,7 @@ export async function POST(req: NextRequest) {
     eligible,
     counts_by_chain: counts,
     timestamp_iso: new Date().toISOString(),
+    ...(isBypass && { test_bypass: true }),
   };
 
   try {
